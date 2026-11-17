@@ -45,6 +45,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     receiptSettings.paperSize || '80mm'
   );
 
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+
   if (!isOpen || !transaction) return null;
 
   const currentSettings: ReceiptSettings = {
@@ -59,7 +61,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   const martTitle = currentSettings.storeName || 'WAQAS MART';
 
-  const handleWhatsAppShare = () => {
+  const handleWhatsAppShare = async () => {
     const textLines = [
       `🛒 *${martTitle} - ${currentSettings.storeUrduName || 'وقاص مارٹ'}*`,
       `📄 Invoice #: ${transaction.invoiceNumber}`,
@@ -73,6 +75,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       `--------------------------------`,
       `Subtotal: ${formatRs(transaction.subtotal)}`,
       transaction.discount > 0 ? `Discount (رعایت): -${formatRs(transaction.discount)}` : null,
+      transaction.taxAmount > 0 ? `Tax: ${formatRs(transaction.taxAmount)}` : null,
       `*Grand Total (کل رقم): ${formatRs(transaction.grandTotal)}*`,
       `Payment Method: ${transaction.paymentMethod.toUpperCase()}`,
       transaction.changeDue !== undefined && transaction.changeDue > 0
@@ -86,8 +89,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       .filter(Boolean)
       .join('\n');
 
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(textLines)}`;
-    window.open(url, '_blank');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Invoice #${transaction.invoiceNumber}`, text: textLines });
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textLines);
+        setShareFeedback('Receipt text copied to clipboard!');
+        setTimeout(() => setShareFeedback(null), 3000);
+        return;
+      }
+    } catch {}
+    setShareFeedback('Ready to share.');
+    setTimeout(() => setShareFeedback(null), 2500);
   };
 
   // Helper for Owner Photo classes
@@ -504,6 +519,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                         ? 'CASH (نقد رقم)'
                         : transaction.paymentMethod === 'card'
                         ? 'CARD (کریڈٹ/ڈیبٹ کارڈ)'
+                        : transaction.paymentMethod === 'digital'
+                        ? `DIGITAL (${transaction.cardBank || 'Wallet'})`
                         : 'CREDIT / KHATA (ادھار کھاتہ)'}
                     </span>
                   </div>
@@ -526,9 +543,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     </>
                   )}
 
-                  {transaction.paymentMethod === 'card' && transaction.cardReference && (
+                  {(transaction.paymentMethod === 'card' || transaction.paymentMethod === 'digital') && transaction.cardReference && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Card Slip / Ref:</span>
+                      <span className="text-slate-500">{transaction.paymentMethod === 'digital' ? 'TID / Ref:' : 'Card Slip / Ref:'}</span>
                       <span className="font-mono text-slate-800">{transaction.cardReference}</span>
                     </div>
                   )}
@@ -585,6 +602,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
           {/* Action Buttons */}
           <div className="p-3.5 bg-white border-t border-slate-200 shrink-0 space-y-2">
+            {shareFeedback && (
+              <div className="text-center text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-1.5">
+                {shareFeedback}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handlePrint}
@@ -598,7 +620,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl font-bold text-xs transition-colors cursor-pointer active:scale-98"
               >
                 <Share2 className="w-4 h-4 text-emerald-700" />
-                <span>Share WhatsApp</span>
+                <span>Share Receipt</span>
               </button>
             </div>
 

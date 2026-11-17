@@ -49,7 +49,7 @@ export const LoginGateway: React.FC<LoginGatewayProps> = ({ onUnlockSuccess, def
           </div>
           <h1 className="text-xl font-black tracking-tight text-white">WAQAS POS SOFTWARE</h1>
           <p className="text-sm text-slate-300 mt-1.5">
-            Enter application password to unlock this device
+            Enter application password to continue
           </p>
         </div>
 
@@ -116,7 +116,7 @@ export const LoginGateway: React.FC<LoginGatewayProps> = ({ onUnlockSuccess, def
         <div className="px-6 py-3 bg-slate-950/60 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
           <span className="flex items-center gap-1.5">
             <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Offline Device Lock</span>
+            <span>Offline Password Lock</span>
           </span>
           <span className="font-mono text-slate-400">WAQAS POS</span>
         </div>

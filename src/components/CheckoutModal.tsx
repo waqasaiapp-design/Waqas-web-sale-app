@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Banknote, CreditCard, BookOpen, AlertCircle, ShoppingCart, User, Plus, Users, Search } from 'lucide-react';
+import { X, CheckCircle2, Banknote, CreditCard, BookOpen, AlertCircle, Smartphone, Plus, Users } from 'lucide-react';
 import { CartItem, PaymentMethod, POSMode, Customer } from '../types/pos';
 import { formatRs } from '../data/defaultProducts';
 
@@ -9,6 +9,7 @@ interface CheckoutModalProps {
   cart: CartItem[];
   subtotal: number;
   discount: number;
+  taxAmount?: number;
   grandTotal: number;
   totalQty: number;
   customers?: Customer[];
@@ -33,6 +34,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   cart,
   subtotal,
   discount,
+  taxAmount = 0,
   grandTotal,
   totalQty,
   customers = [],
@@ -44,6 +46,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [cashTendered, setCashTendered] = useState<number | ''>(grandTotal);
   const [cardBank, setCardBank] = useState('HBL POS Machine');
   const [cardRef, setCardRef] = useState('');
+  const [digitalWallet, setDigitalWallet] = useState('JazzCash');
+  const [digitalRef, setDigitalRef] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -99,8 +103,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       method,
       cashTendered: method === 'cash' ? (tenderedNum || grandTotal) : method === 'credit' ? advanceNum : undefined,
       changeDue: method === 'cash' ? changeDue : undefined,
-      cardBank: method === 'card' ? cardBank : undefined,
-      cardRef: method === 'card' ? cardRef : undefined,
+      cardBank: method === 'card' ? cardBank : method === 'digital' ? digitalWallet : undefined,
+      cardRef: method === 'card' ? cardRef : method === 'digital' ? digitalRef : undefined,
       customerId: selectedCustomerId || undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
@@ -171,6 +175,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <span className="text-xs text-emerald-700 font-medium">
                 {mode === 'sale' ? 'Sale Invoice' : mode === 'purchase' ? 'Vendor Purchase' : 'Return Refund'}
               </span>
+              {(discount > 0 || taxAmount > 0) && (
+                <span className="text-[10px] text-slate-500 block mt-0.5">
+                  Sub: {formatRs(subtotal)}
+                  {discount > 0 ? ` · Disc: -${formatRs(discount)}` : ''}
+                  {taxAmount > 0 ? ` · Tax: +${formatRs(taxAmount)}` : ''}
+                </span>
+              )}
             </div>
             <div className="text-right">
               <span className="text-2xl font-black text-slate-900 tabular-nums">
@@ -182,11 +193,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {/* Payment Method Selector */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">Payment Method / طریقہ ادائیگی</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => setMethod('cash')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition-all cursor-pointer border ${
+                className={`py-2.5 px-2 min-h-[48px] rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border ${
                   method === 'cash'
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -199,7 +210,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <button
                 type="button"
                 onClick={() => setMethod('card')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition-all cursor-pointer border ${
+                className={`py-2.5 px-2 min-h-[48px] rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border ${
                   method === 'card'
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -211,8 +222,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               <button
                 type="button"
+                onClick={() => setMethod('digital')}
+                className={`py-2.5 px-2 min-h-[48px] rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border ${
+                  method === 'digital'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>Digital</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setMethod('credit')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition-all cursor-pointer border ${
+                className={`py-2.5 px-2 min-h-[48px] rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all cursor-pointer border ${
                   method === 'credit'
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -306,6 +330,36 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   placeholder="e.g. AUTH-928174"
                   value={cardRef}
                   onChange={(e) => setCardRef(e.target.value)}
+                  className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Digital Payment Details */}
+          {method === 'digital' && (
+            <div className="space-y-2.5 pt-1 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Digital Wallet / App:</label>
+                <select
+                  value={digitalWallet}
+                  onChange={(e) => setDigitalWallet(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white text-xs"
+                >
+                  <option value="JazzCash">JazzCash Mobile Account</option>
+                  <option value="Easypaisa">Easypaisa Account</option>
+                  <option value="Raast QR">Raast QR Instant Transfer</option>
+                  <option value="SadaPay / NayaPay">SadaPay / NayaPay</option>
+                  <option value="Bank Transfer">Online Bank Transfer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Transaction ID / TID (Optional):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. TID-984210"
+                  value={digitalRef}
+                  onChange={(e) => setDigitalRef(e.target.value)}
                   className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-xs"
                 />
               </div>

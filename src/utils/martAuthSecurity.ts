@@ -1,39 +1,42 @@
 /**
  * WAQAS POS SOFTWARE - Offline Single Password Lock Engine
  *
- * Security & Persistence Guarantees:
- * 1. Verifies the initial unlock password using a salted SHA-256 digest (no plaintext password stored in source code or localStorage).
+ * Security & Launch Behavior Guarantees:
+ * 1. Verifies the application password using a salted SHA-256 digest (no plaintext password stored in source code or localStorage).
  * 2. Works 100% offline with zero network, Google, Firebase, or server auth dependencies.
- * 3. Persists an opaque cryptographically signed device unlock token after the first successful unlock so subsequent launches open directly without re-prompting.
- * 4. Cleans only legacy authentication keys while preserving all business records.
+ * 3. Holds unlock state strictly in memory for the current launch session — every new app launch starts locked and requires the password again.
+ * 4. Cleans only legacy authentication and persistent-unlock keys while preserving all business records.
  */
 
 const UNLOCK_SALT = 'WAQAS_POS_UNLOCK_SALT_v1_2026_9F4A';
 const UNLOCK_HASH = '78b925ca903aae3866fc51bd7cc8fbd2b6564520a75a471ec917c8cdde3a2f4c';
-const DEVICE_SIGNING_KEY = 'WAQAS_POS_DEVICE_LOCK_SIGN_KEY_v1_2026_C7E2';
+const SESSION_SIGNING_KEY = 'WAQAS_POS_SESSION_LOCK_SIGN_KEY_v2_2026_C7E2';
 
 export const UNLOCK_STORAGE_KEY = 'waqas_pos_device_unlock_v1';
 
 const LEGACY_AUTH_KEYS = [
+  UNLOCK_STORAGE_KEY,
   'waqas_mart_auth_session',
   'waqas_mart_active_password_v2',
   'waqas_mart_password_history_v2',
   'waqas_mart_app_pin_hash_v6',
 ];
 
-export interface DeviceUnlockRecord {
-  version: 1;
+export interface SessionUnlockRecord {
+  version: 2;
   unlocked: true;
   unlockedAt: number;
-  deviceNonce: string;
+  sessionNonce: string;
   signature: string;
 }
+
+// Ephemeral in-memory unlock state for the active launch only (never persisted across app launches)
+let currentLaunchUnlockRecord: SessionUnlockRecord | null = null;
 
 /**
  * Standard RFC 6234 synchronous SHA-256 (identical output in Browser, PWA, and Node/tsx)
  */
 export function sha256Hex(input: string): string {
-  // Encode string to UTF-8 bytes
   const bytes: number[] = [];
   for (let i = 0; i < input.length; i++) {
     let code = input.charCodeAt(i);
@@ -151,18 +154,24 @@ function generateRandomNonce(): string {
   return sha256Hex(`${Date.now()}-${Math.random()}-${Math.random()}`).slice(0, 32);
 }
 
-function computeDeviceUnlockSignature(deviceNonce: string, unlockedAt: number): string {
-  return sha256Hex(`${DEVICE_SIGNING_KEY}:${deviceNonce}:${unlockedAt}`);
+function computeSessionUnlockSignature(sessionNonce: string, unlockedAt: number): string {
+  return sha256Hex(`${SESSION_SIGNING_KEY}:${sessionNonce}:${unlockedAt}`);
 }
 
 /**
- * Clean up legacy login/password keys without touching any POS business records.
+ * Clean up legacy login/password/persistent-unlock keys on launch without touching any POS business records.
  */
 export function cleanupLegacyAuthStorage(): void {
+  currentLaunchUnlockRecord = null;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       for (const key of LEGACY_AUTH_KEYS) {
         window.localStorage.removeItem(key);
+      }
+    }
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      for (const key of LEGACY_AUTH_KEYS) {
+        window.sessionStorage.removeItem(key);
       }
     }
   } catch {}
@@ -180,64 +189,57 @@ export function verifyAppUnlockPassword(passwordInput: string): boolean {
 }
 
 /**
- * Persist cryptographically signed unlock state on this device (no plaintext password stored).
+ * Store signed unlock state strictly in memory for the current launch session only.
+ * Never persists unlock state to localStorage so every new app launch asks for the password again.
  */
-export function saveUnlockedState(): DeviceUnlockRecord {
+export function saveUnlockedState(): SessionUnlockRecord {
   const unlockedAt = Date.now();
-  const deviceNonce = generateRandomNonce();
-  const signature = computeDeviceUnlockSignature(deviceNonce, unlockedAt);
+  const sessionNonce = generateRandomNonce();
+  const signature = computeSessionUnlockSignature(sessionNonce, unlockedAt);
 
-  const record: DeviceUnlockRecord = {
-    version: 1,
+  const record: SessionUnlockRecord = {
+    version: 2,
     unlocked: true,
     unlockedAt,
-    deviceNonce,
+    sessionNonce,
     signature,
   };
 
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      cleanupLegacyAuthStorage();
-      window.localStorage.setItem(UNLOCK_STORAGE_KEY, JSON.stringify(record));
-    }
-  } catch {}
-
+  cleanupLegacyAuthStorage();
+  currentLaunchUnlockRecord = record;
   return record;
 }
 
 /**
- * Check whether this device has already completed initial password unlock.
+ * Check whether the current active launch session has been unlocked.
  */
 export function isAppUnlocked(): boolean {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return false;
-    }
-    const raw = window.localStorage.getItem(UNLOCK_STORAGE_KEY);
-    if (!raw) return false;
-
-    const parsed = JSON.parse(raw) as Partial<DeviceUnlockRecord>;
-    if (
-      !parsed ||
-      parsed.version !== 1 ||
-      parsed.unlocked !== true ||
-      typeof parsed.unlockedAt !== 'number' ||
-      typeof parsed.deviceNonce !== 'string' ||
-      parsed.deviceNonce.length < 16 ||
-      typeof parsed.signature !== 'string'
-    ) {
-      return false;
-    }
-
-    const expectedSignature = computeDeviceUnlockSignature(parsed.deviceNonce, parsed.unlockedAt);
-    return constantTimeEqual(parsed.signature, expectedSignature);
-  } catch {
+  const rec = currentLaunchUnlockRecord;
+  if (
+    !rec ||
+    rec.version !== 2 ||
+    rec.unlocked !== true ||
+    typeof rec.unlockedAt !== 'number' ||
+    typeof rec.sessionNonce !== 'string' ||
+    rec.sessionNonce.length < 16 ||
+    typeof rec.signature !== 'string'
+  ) {
     return false;
   }
+
+  const expectedSignature = computeSessionUnlockSignature(rec.sessionNonce, rec.unlockedAt);
+  return constantTimeEqual(rec.signature, expectedSignature);
 }
 
 /**
- * Unlock application with password verification (100% offline).
+ * Lock the in-memory session (used on new app launch or reset).
+ */
+export function resetSessionUnlockState(): void {
+  currentLaunchUnlockRecord = null;
+}
+
+/**
+ * Unlock application for the active launch session with offline password verification.
  */
 export function unlockWithPassword(passwordInput: string): { success: boolean; error?: string } {
   if (!passwordInput || passwordInput.length === 0) {

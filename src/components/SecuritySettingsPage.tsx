@@ -20,9 +20,9 @@ export const SecuritySettingsPage: React.FC<SecuritySettingsPageProps> = ({ onBa
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
             <Lock className="w-6 h-6" />
           </div>
-          <h2 className="text-base font-bold text-slate-900">Device Lock Active</h2>
+          <h2 className="text-base font-bold text-slate-900">Application Password Lock Active</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
-            This device has been unlocked for offline POS operation. Password management and modification are disabled.
+            WAQAS POS SOFTWARE requires the offline application password on every launch. Password changes are disabled.
           </p>
           {onBackToHome && (
             <button

@@ -170,9 +170,11 @@ export const ProductQuickAddModal: React.FC<ProductQuickAddModalProps> = ({
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
               >
                 <option value="ALL ITEMS">ALL ITEMS (جنرل)</option>
-                <option value="JAZZ">JAZZ (جاز)</option>
-                <option value="DUBAI KUNAFA">DUBAI KUNAFA (دبئی کنافہ)</option>
                 <option value="GROCERY">GROCERY (کریانہ)</option>
+                <option value="BEVERAGES">BEVERAGES (مشروبات)</option>
+                <option value="SNACKS">SNACKS (اسنیکس)</option>
+                <option value="DAIRY">DAIRY (ڈیری)</option>
+                <option value="HOUSEHOLD">HOUSEHOLD (گھریلو اشیاء)</option>
                 <option value="OTHER">OTHER (دیگر)</option>
               </select>
             </div>

@@ -64,6 +64,7 @@ import {
   CctvCamera,
   DvrNvrConfig,
   SecurityConfig,
+  PaymentMethod,
 } from './types/pos';
 import {
   SCREENSHOT_CATEGORIES,
@@ -108,6 +109,7 @@ import {
   isAppUnlocked,
   cleanupLegacyAuthStorage,
 } from './utils/martAuthSecurity';
+import { calculateCartTotals } from './utils/oldSaleHelpers';
 import { AuthUser, ShopAccount, UserRole } from './types/pos';
 
 const STORAGE_KEYS = {
@@ -149,18 +151,20 @@ try {
 } catch {}
 
 export default function App() {
-  // Single Offline Device Password Unlock State (persisted on device after first unlock)
+  // Single Offline Password Lock — ALWAYS required on every new app launch
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
     cleanupLegacyAuthStorage();
-    return isAppUnlocked();
+    return false;
   });
 
   // Navigation: 'Home' | 'Sale POS' | 'Purchase Entry' | 'Total Stock' | etc.
   const [activeNav, setActiveNav] = useState<string>('Home');
 
   const handleUnlockSuccess = () => {
-    setIsUnlocked(true);
-    setActiveNav('Home');
+    if (isAppUnlocked()) {
+      setIsUnlocked(true);
+      setActiveNav('Home');
+    }
   };
   const [mode, setMode] = useState<POSMode>('sale');
   const [isReceiptDesignerOpen, setIsReceiptDesignerOpen] = useState(false);
@@ -229,6 +233,7 @@ export default function App() {
   // POS Cart
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [taxAmount, setTaxAmount] = useState<number>(0);
   const [resumedHeldBillId, setResumedHeldBillId] = useState<string | null>(null);
   const [resumedNewSaleBill, setResumedNewSaleBill] = useState<HeldBill | null>(null);
 
@@ -739,10 +744,11 @@ export default function App() {
   }, [cart]);
 
   // Cart Calculations
-  const totalQty = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const subtotal = cart.reduce((acc, item) => acc + item.lineTotal, 0);
-  const discount = Math.min(subtotal, Math.max(0, discountAmount));
-  const grandTotal = Math.max(0, subtotal - discount);
+  const { totalQty, subtotal, discount, tax, grandTotal } = calculateCartTotals(
+    cart,
+    discountAmount,
+    taxAmount
+  );
 
   // Seed Catalog (Exact 15 Picture Items)
   const handleLoadSeedCatalog = async () => {
@@ -989,6 +995,22 @@ export default function App() {
     );
   };
 
+  const updateCartPrice = (itemId: string, newPrice: number) => {
+    const safePrice = Math.max(0, Number(newPrice) || 0);
+    setCart((prev) =>
+      prev.map((i) => {
+        if (i.id === itemId) {
+          return {
+            ...i,
+            unitPrice: safePrice,
+            lineTotal: i.quantity * safePrice,
+          };
+        }
+        return i;
+      })
+    );
+  };
+
   const removeCartItem = (itemId: string) => {
     setCart((prev) => prev.filter((i) => i.id !== itemId));
   };
@@ -996,6 +1018,7 @@ export default function App() {
   const handleClearCart = () => {
     setCart([]);
     setDiscountAmount(0);
+    setTaxAmount(0);
     setResumedHeldBillId(null);
   };
 
@@ -1240,6 +1263,7 @@ export default function App() {
       items: [...cart],
       subtotal,
       discount,
+      taxAmount: tax,
       grandTotal,
       totalQty,
       sourcePage: 'Old Sale',
@@ -1255,6 +1279,7 @@ export default function App() {
     syncService.syncHeldBills(updatedHeld);
     setCart([]);
     setDiscountAmount(0);
+    setTaxAmount(0);
     setResumedHeldBillId(null);
     setIsCartDrawerOpen(false);
 
@@ -1313,6 +1338,7 @@ export default function App() {
         setMode(bill.mode || 'sale');
         setCart(bill.items);
         setDiscountAmount(bill.discount || 0);
+        setTaxAmount(bill.taxAmount || 0);
         setActiveNav('Sale POS');
 
         sounds.playBarcodeBeep();
@@ -1475,7 +1501,7 @@ export default function App() {
 
   // Checkout Confirmation
   const handleConfirmCheckout = (details: {
-    method: 'cash' | 'card' | 'credit';
+    method: PaymentMethod;
     cashTendered?: number;
     changeDue?: number;
     cardBank?: string;
@@ -1487,7 +1513,7 @@ export default function App() {
   }) => {
     if (cart.length === 0 || grandTotal < 0) return;
 
-    // Deduct stock for sold items (Negative Stock Management System: e.g. 0 - 5 = -5, 3 - 8 = -5)
+    // Deduct stock ONLY when sale is completed
     if (mode === 'sale') {
       setProducts((prev) =>
         prev.map((p) => {
@@ -1515,7 +1541,7 @@ export default function App() {
       items: [...cart],
       subtotal,
       discount,
-      taxAmount: 0,
+      taxAmount: tax,
       grandTotal,
       paymentMethod: details.method,
       cashTendered: details.cashTendered,
@@ -1587,6 +1613,7 @@ export default function App() {
 
     setCart([]);
     setDiscountAmount(0);
+    setTaxAmount(0);
     setIsCheckoutOpen(false);
 
     setCurrentTransaction(transaction);
@@ -1863,18 +1890,19 @@ export default function App() {
     { id: 'Settings', label: 'Settings', icon: Settings },
   ];
 
-  // Single Password Lock Screen on first application launch
+  // Single Password Lock Screen on every application launch
   if (!isUnlocked) {
     return <LoginGateway onUnlockSuccess={handleUnlockSuccess} deferredPrompt={deferredPrompt} />;
   }
 
   const isHomePage = activeNav === 'Home';
   const isNewSalePage = activeNav === 'New Sale POS' || activeNav === 'New Sale' || activeNav === 'New Sale Page' || activeNav === 'POS Terminal' || activeNav === 'New POS';
+  const isOldSalePage = activeNav === 'Sale POS' || activeNav === 'Old Sale' || activeNav === 'Classic Sale POS' || activeNav === 'Classic Sale' || activeNav === 'Old Sale Page';
 
   return (
     <div className="h-[100dvh] w-full max-w-full bg-[#f8fafc] text-slate-900 flex flex-col font-sans overflow-hidden">
       {/* MAIN CONTENT WORKSPACE (Allows complete vertical scrolling for every page) */}
-      <main className={`flex-1 flex flex-col min-w-0 min-h-0 w-full overflow-y-auto overflow-x-hidden ${isNewSalePage ? 'pb-0' : 'pb-16 lg:pb-0'} overscroll-y-contain`}>
+      <main className={`flex-1 flex flex-col min-w-0 min-h-0 w-full overflow-y-auto overflow-x-hidden ${isNewSalePage || isOldSalePage ? 'pb-0' : 'pb-16 lg:pb-0'} overscroll-y-contain`}>
         {/* CONDITIONAL PAGE RENDER (ALL 22 EXISTING PAGES & MODULES) */}
         {activeNav === 'Device Management' || activeNav === 'Connect New Device' ? (
           /* PAGE 19: MULTI-DEVICE MANAGEMENT & QR TERMINAL CONNECTIONS */
@@ -1999,6 +2027,7 @@ export default function App() {
             totalQty={totalQty}
             subtotal={subtotal}
             discount={discount}
+            taxAmount={tax}
             grandTotal={grandTotal}
             heldBillsCount={heldBills.length}
             branding={branding}
@@ -2007,6 +2036,9 @@ export default function App() {
             transactions={transactions}
             onAddToCart={addToCart}
             onUpdateCartQty={updateCartQty}
+            onUpdateCartPrice={updateCartPrice}
+            onUpdateDiscount={setDiscountAmount}
+            onUpdateTax={setTaxAmount}
             onRemoveCartItem={removeCartItem}
             onClearCart={handleClearCart}
             onSwitchMode={(newMode) => {
@@ -2017,6 +2049,7 @@ export default function App() {
             onOpenCheckout={() => {
               setIsCheckoutOpen(true);
             }}
+            onOpenCartDrawer={() => setIsCartDrawerOpen(true)}
             onHoldBill={handleHoldBill}
             onOpenHeldBills={() => setIsHeldBillsOpen(true)}
             heldBills={heldBills}
@@ -2043,13 +2076,13 @@ export default function App() {
             onQuickAddCustomer={handleSaveCustomer}
             onConfirmCheckout={handleConfirmCheckout}
             onDeleteTransaction={(invNum) => {
-              if (window.confirm(`Delete Invoice #${invNum}? This will remove it from sales records. (کیا آپ انوائس نمبر #${invNum} ڈیلیٹ کرنا چاہتے ہیں؟)`)) {
-                setTransactions((prev) => prev.filter((t) => t.invoiceNumber !== invNum));
-                showToast(`Invoice #${invNum} deleted successfully (انوائس ڈیلیٹ ہو گئی)`, 'info');
-              }
+              setTransactions((prev) => prev.filter((t) => t.invoiceNumber !== invNum));
+              showToast(`Invoice #${invNum} deleted successfully (انوائس ڈیلیٹ ہو گئی)`, 'info');
             }}
             onEditTransaction={(tx) => {
               setCart(tx.items);
+              setDiscountAmount(tx.discount || 0);
+              setTaxAmount(tx.taxAmount || 0);
               showToast(`Invoice #${tx.invoiceNumber} loaded into cart for editing.`, 'info');
             }}
           />
@@ -2189,7 +2222,7 @@ export default function App() {
       {/* ============================================================== */}
       {/* 3. MOBILE BOTTOM NAVIGATION BAR (MATCHING MOBILE REFERENCE)    */}
       {/* ============================================================== */}
-      {!isNewSalePage && (
+      {!isNewSalePage && !isOldSalePage && (
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 h-16 flex items-center justify-around px-2 shadow-lg">
           {/* 1. HOME */}
           <button
@@ -2311,10 +2344,12 @@ export default function App() {
         cart={cart}
         subtotal={subtotal}
         discount={discount}
+        taxAmount={tax}
         grandTotal={grandTotal}
         totalQty={totalQty}
         onClose={() => setIsCartDrawerOpen(false)}
         onUpdateQty={updateCartQty}
+        onUpdatePrice={updateCartPrice}
         onRemoveItem={removeCartItem}
         onClearCart={handleClearCart}
         onHoldBill={handleHoldBill}
@@ -2323,6 +2358,7 @@ export default function App() {
           setIsCheckoutOpen(true);
         }}
         onUpdateDiscount={setDiscountAmount}
+        onUpdateTax={setTaxAmount}
       />
 
       {/* Checkout Modal */}
@@ -2332,6 +2368,7 @@ export default function App() {
         cart={cart}
         subtotal={subtotal}
         discount={discount}
+        taxAmount={tax}
         grandTotal={grandTotal}
         totalQty={totalQty}
         customers={customers}

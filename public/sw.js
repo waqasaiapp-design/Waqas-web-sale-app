@@ -1,9 +1,6 @@
 // Service Worker for WAQAS MART Supermarket POS
-const CACHE_NAME = 'waqas-mart-cache-v2';
+const CACHE_NAME = 'waqas-mart-cache-v5';
 const STATIC_ASSETS = [
-  '/',
-  '/?source=pwa',
-  '/index.html',
   '/manifest.json',
   '/manifest.webmanifest',
   '/favicon.ico',
@@ -40,8 +37,37 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests and non-API requests
   if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
+    return;
+  }
+
+  const reqUrl = new URL(event.request.url);
+  const isAppShellOrScript =
+    event.request.mode === 'navigate' ||
+    reqUrl.pathname === '/' ||
+    /\.(html|js|mjs|tsx|ts|css|json)$/i.test(reqUrl.pathname);
+
+  if (isAppShellOrScript) {
+    // Network-first so mobile updates load immediately while remaining offline-capable
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            if (event.request.mode === 'navigate') {
+              return caches.match('/index.html');
+            }
+            return new Response('Offline', { status: 503 });
+          });
+        })
+    );
     return;
   }
 
@@ -59,11 +85,6 @@ self.addEventListener('fetch', (event) => {
           cache.put(event.request, responseToCache);
         });
         return networkResponse;
-      }).catch(() => {
-        // Fallback for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
       });
     })
   );

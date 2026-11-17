@@ -29,7 +29,7 @@ export interface CartItem {
   customPriceReason?: string;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'credit';
+export type PaymentMethod = 'cash' | 'card' | 'digital' | 'credit';
 
 export type POSMode = 'sale' | 'purchase' | 'return';
 
@@ -90,6 +90,7 @@ export interface HeldBill {
   items: CartItem[];
   subtotal: number;
   discount: number;
+  taxAmount?: number;
   grandTotal: number;
   totalQty: number;
   customerName?: string;

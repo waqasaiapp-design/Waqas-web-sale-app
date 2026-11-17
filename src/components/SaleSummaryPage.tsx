@@ -79,7 +79,8 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
 
   // Search & Payment Method Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState<'All' | 'Cash' | 'Card' | 'Credit'>('All');
+  const [paymentFilter, setPaymentFilter] = useState<'All' | 'Cash' | 'Card' | 'Digital' | 'Credit'>('All');
+  const [inlineNotice, setInlineNotice] = useState<string | null>(null);
 
   // Selected row for "Print Invoice"
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -255,7 +256,7 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
 
       if (tx.paymentMethod === 'cash') {
         cashSales += tx.grandTotal;
-      } else if (tx.paymentMethod === 'card') {
+      } else if (tx.paymentMethod === 'card' || tx.paymentMethod === 'digital') {
         cardSales += tx.grandTotal;
       } else if (tx.paymentMethod === 'credit') {
         creditSales += tx.grandTotal;
@@ -368,7 +369,8 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
   // Export to Excel / CSV
   const handleExportExcel = () => {
     if (filteredTransactions.length === 0) {
-      alert('No sales records to export for this date range.');
+      setInlineNotice('No sales records to export for this date range.');
+      setTimeout(() => setInlineNotice(null), 3000);
       return;
     }
 
@@ -426,7 +428,8 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
       if (filteredTransactions.length > 0) {
         onSelectInvoiceToPrint(filteredTransactions[0]);
       } else {
-        alert('Please select an invoice from the table to print.');
+        setInlineNotice('Please select an invoice from the table to print.');
+        setTimeout(() => setInlineNotice(null), 3000);
       }
       return;
     }
@@ -465,6 +468,12 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
       />
 
       <div className="flex-1 min-h-0 flex flex-col p-3 sm:p-5 lg:p-6 w-full space-y-4 overflow-y-auto">
+        {inlineNotice && (
+          <div className="px-4 py-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs">
+            <span>{inlineNotice}</span>
+            <button type="button" onClick={() => setInlineNotice(null)} className="text-amber-700 hover:text-amber-900 font-black ml-3 cursor-pointer">×</button>
+          </div>
+        )}
       {/* ============================================================== */}
       {/* 1. TOP HEADER WITH REAL-TIME TITLE & ADMIN PROFILE             */}
       {/* ============================================================== */}
@@ -636,12 +645,13 @@ export const SaleSummaryPage: React.FC<SaleSummaryPageProps> = ({
             </label>
             <select
               value={paymentFilter}
-              onChange={(e) => setPaymentFilter(e.target.value as 'All' | 'Cash' | 'Card' | 'Credit')}
+              onChange={(e) => setPaymentFilter(e.target.value as 'All' | 'Cash' | 'Card' | 'Digital' | 'Credit')}
               className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
             >
               <option value="All">All</option>
               <option value="Cash">Cash (نقد)</option>
               <option value="Card">Card / POS</option>
+              <option value="Digital">Digital Wallet</option>
               <option value="Credit">Credit / Udhaar</option>
             </select>
           </div>
