@@ -1,0 +1,43 @@
+name: WAQAS POS Build & Release CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Validate WAQAS POS App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Type Check & Linting
+        run: npm run lint
+
+      - name: Compile Applet (Vite & Server)
+        run: npm run build
+
+      - name: Archive Production Web App Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: waqas-pos-production-build
+          path: |
+            dist/
+            server.cjs
+            public/
+            package.json
+          retention-days: 14
